@@ -1,0 +1,6 @@
+config.py
+library/
+storage.*
+.idea/
+*.egg-info
+__pycache__/
