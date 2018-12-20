@@ -1,4 +1,6 @@
+import json
 import math
+import pathlib
 
 import ads
 import ads.config
@@ -8,6 +10,7 @@ import requests
 from peewee import Model
 
 import config
+from create_library import create_library
 from models import Author, Keyword, Publication, Doctype, Paper, PaperAuthors, PaperKeywords, db
 
 ads.config.token = config.ads_token
@@ -45,7 +48,7 @@ def init():
 @click.option("-t", "--title")
 def add(search_query, author, title):
     fl = ['id', 'author', 'first_author', 'bibcode', 'id', 'year', 'title', 'abstract', 'doi', 'pubdate', "pub",
-          "doctype", "identifier"]
+          "keyword", "doctype", "identifier", "links_data"]
     if author:
         search_query += "author:" + author
     if title:
@@ -61,7 +64,7 @@ def add(search_query, author, title):
         first_ten = papers[:10]
         single_paper: ads.search.Article
         for index, single_paper in enumerate(first_ten):
-            print(index, single_paper.title[0])
+            print(index, single_paper.title[0],single_paper.first_author)
         selected_index = click.prompt('select paper', type=int)
         selection = papers[selected_index]  # type:ads.search.Article
 
@@ -92,15 +95,20 @@ def add(search_query, author, title):
     paper.year = selection.year
     paper.pubdate = selection.pubdate
     paper.pdf_downloaded = False
-    authors = [Author.get_or_create(name=name)[0] for name in selection.author]
     paper.first_author = Author.get_or_create(name=selection.first_author)[0]
     paper.publication = Publication.get_or_create(name=selection.pub)[0]
     paper.doctype = Doctype.get_or_create(name=selection.doctype)[0]
     paper.arxiv_identifier = [ident for ident in selection.identifier if "arXiv:" in ident][0].split("arXiv:")[-1]
     paper.bibtex = bibtex
+    links = [json.loads(string) for string in selection.links_data]
+    print(links)
     paper.save()
+    authors = [Author.get_or_create(name=name)[0] for name in selection.author]
     for author in db.batch_commit(authors, 100):
         PaperAuthors.create(author=author, paper=paper)
+    keywords = [Keyword.get_or_create(keyword=keyword)[0] for keyword in selection.keyword]
+    for keyword in db.batch_commit(keywords, 100):
+        PaperKeywords.create(keyword=keyword, paper=paper)
     print("fetching PDF")
     arxiv_url = "https://arxiv.org/pdf/{id}".format(id=paper.arxiv_identifier)
     r = requests.get(arxiv_url, stream=True)
@@ -114,6 +122,11 @@ def add(search_query, author, title):
                 f.write(chunk)
     paper.pdf_downloaded = True
     paper.save()
+
+
+@cli.command()
+def update():
+    create_library(pathlib.Path('./library').resolve(), pathlib.Path('./browse').resolve())
 
 
 if __name__ == '__main__':

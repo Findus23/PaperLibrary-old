@@ -4,3 +4,4 @@ storage.*
 .idea/
 *.egg-info
 __pycache__/
+browse/
